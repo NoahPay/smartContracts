@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "../interface/IFrankencoin.sol";
 import "../interface/IReserve.sol";
 import "./FlashLoanRollerFactory.sol";
-import "./IFlashLoanExecuteRolling.sol";
+import "./IFlashLoanRollerExecute.sol";
 
 contract FlashLoanProvider {
     // ---------------------------------------------------------------------------------------------------
@@ -40,8 +40,6 @@ contract FlashLoanProvider {
     event LoanTaken(address indexed to, uint256 amount, uint256 totalMint);
     event Repaid(address indexed from, uint256 total, uint256 repay, uint256 fee);
     event Completed(address indexed from, uint256 amount);
-    event Log(address sender, string message);
-
 
     // ---------------------------------------------------------------------------------------------------
     // Errors
@@ -66,7 +64,7 @@ contract FlashLoanProvider {
     }
 
     // ---------------------------------------------------------------------------------------------------
-    constructor(address _zchf, address _factory) {
+    constructor(address _zchf) {
         zchf = IFrankencoin(_zchf);
         factory = new FlashLoanRollerFactory();
         cooldown = block.timestamp + FLASHLOAN_DELAY;
@@ -113,7 +111,7 @@ contract FlashLoanProvider {
         emit LoanTaken(msg.sender, amount, totalMinted);
 
         // execute
-        IFlashLoanExecuteRolling(msg.sender).executeRolling(_from, _to, amount);
+        IFlashLoanRollerExecute(msg.sender).executeRolling(_from, _to, amount);
 
         // verify after
         _verify(msg.sender);

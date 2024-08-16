@@ -8,16 +8,14 @@ import "../interface/IFrankencoin.sol";
 import "../Position.sol";
 
 import "./FlashLoanProvider.sol";
-import "./IFlashLoanExecuteRolling.sol";
+import "./IFlashLoanRollerExecute.sol";
 
-contract FlashLoanRoller is IFlashLoanExecuteRolling, Ownable {
+contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
     IFrankencoin public immutable zchf;
     FlashLoanProvider public immutable flash;
 
     // ---------------------------------------------------------------------------------------------------
     // events
-    event LogInt(address from, string message, uint256 value);
-    event LogAddress(address from, string message);
     event Rolled(address owner, address from, address to, uint256 flashAmount, uint256 fee);
     
     // ---------------------------------------------------------------------------------------------------
@@ -29,10 +27,9 @@ contract FlashLoanRoller is IFlashLoanExecuteRolling, Ownable {
 
     // ---------------------------------------------------------------------------------------------------
     constructor (address _owner, address _zchf, address _flash) {
+        _setOwner(_owner);
         zchf = IFrankencoin(_zchf);
         flash = FlashLoanProvider(_flash);
-
-        _setOwner(_owner);
     }
 
     // ---------------------------------------------------------------------------------------------------
@@ -47,7 +44,7 @@ contract FlashLoanRoller is IFlashLoanExecuteRolling, Ownable {
     }
 
     // ---------------------------------------------------------------------------------------------------
-    function preparePolling(address _from, address _to) external onlyOwner {
+    function prepare(address _from, address _to) external onlyOwner {
         Position from = Position(_from);
         Position to = Position(_to);
 
@@ -70,7 +67,7 @@ contract FlashLoanRoller is IFlashLoanExecuteRolling, Ownable {
     }
 
     // ---------------------------------------------------------------------------------------------------
-    function executeRolling(address _from, address _to, uint256 amount) external {
+    function execute(address _from, address _to, uint256 amount) external {
         if (msg.sender != address(flash)) revert NotFlashLoanProvider();
 
         Position from = Position(_from);
