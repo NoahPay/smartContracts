@@ -26,6 +26,7 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
     error PositionInsuffMint();
     error NotFlashLoanProvider();
     error CollateralNotMatching();
+    error CollateralInsufficient();
 
     // ---------------------------------------------------------------------------------------------------
     constructor (address _owner, address _zchf, address _flash) {
@@ -62,13 +63,10 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         uint256 toMint = minted - inReserve;
         uint256 flashFee = toMint * flash.FLASHLOAN_FEEPPM() / 1_000_000;
 
-        emit Log("minted", from.minted());
-        emit Log("roller", zchf.balanceOf(address(this)));
+        // TODO: make a collateral/price/ratios check --> revert CollateralInsufficient()
 
+        // claim flashFees from msg.sender (roller owner, original owner of positions)
         zchf.transferFrom(msg.sender, address(this), flashFee); // needs allowance
-
-        emit Log("minted", from.minted());
-        emit Log("roller", zchf.balanceOf(address(this)));
 
         flash.takeLoan(_from, _to, toMint); // @dev: this will also invoke function "execute"
 
@@ -81,6 +79,29 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
     }
 
     // ---------------------------------------------------------------------------------------------------
+            /**
+        Lets define an approach.
+
+        Position A:
+        - minted 1000 zchf
+        - interest paid
+        - 10% in reserve
+        - rest paid out
+
+        Position B (needs to be open):
+        - should be able to have ajusted parameters
+        - the "only" same things are
+            - owner
+            - collateral
+        
+        Process:
+        - mint 1000 zchf
+        - pay back loan
+        - mint as much as needed
+          to receive 1000 zchf after costs and reserve
+        - consequece would be the collateral size
+        - how much collateral is needed fot the new position
+         */
     function execute(address _from, address _to, uint256 amount) external {
         if (msg.sender != address(flash)) revert NotFlashLoanProvider();
 
@@ -91,50 +112,53 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         // repay position
         from.adjust(0, 0, from.price());
 
-        // FIXME: bug here
+        // FIXME: Calculation is off, rounding error
+        // FIXME: minted must be adjusted so after cost output matches flash loan amount
 
-        /**
-        transact to DeployerRollerTest.initD_Flashloan errored: Error occurred: revert.
-
-            revert
-                The transaction has been reverted to the initial state.
-            Error provided by the contract:
-            ERC20InsufficientBalance
-            Parameters:
-            {
-            "sender": {
-            "value": "0x5c56e3B2E7bcC28d995f33922F8784443F39Cf83" <-- Roller Contract
-            },
-            "balance": {
-            "value": "8997699000000000000" <-- a calculation is wrong, i just interest adjusted?
-            },
-            "needed": {
-            "value": "9000000000000000000"
-            }
-            }
+        /** Hint!!!
+        Error provided by the contract:
+        ERC20InsufficientBalance
+        Parameters:
+        {
+        "sender": {
+        "value": "0x6a76acaab56C1777De41a5A131E5F63ab4B73834"
+        },
+        "balance": {
+        "value": "8999999999999999999"
+        },
+        "needed": {
+        "value": "9000000000000000000"
+        }
+        }
          */
+        uint256 k = 1_000_000;
+        uint256 r = to.reserveContribution();
+        uint256 f = to.calculateCurrentFee();
+        uint256 toMint = amount * k / (k - r - f);
 
-        emit Log("minted", from.minted());
-        emit Log("roller", zchf.balanceOf(address(this)));
-        // emit Log("price", from.price());
+        uint256 collBalThis = collateral.balanceOf(address(this));
+        uint256 collBalTo = collateral.balanceOf(_to);
+        uint256 toBalance = collBalTo + collBalThis;
+        
+        // @trash: remove after testing
+        emit Log("TO MINT AMOUNT", toMint);
+        emit Log("FLASH LOAN AMOUNT", amount);
 
-        // from.adjust(10001 ether, collateral.balanceOf(_from), from.price());
-        // from.adjust(10000 ether, collateral.balanceOf(_from), from.price());
+        collateral.approve(_to, collBalThis);
+        to.adjust(toMint + 1, toBalance, to.price()); // FIXME: Rounding Error, manual added 1 to pass flashloan repayment
 
-        emit Log("minted", from.minted());
-        emit Log("roller", zchf.balanceOf(address(this)));
-
-        // uint256 k = 1_000_000;
-        // uint256 r = to.reserveContribution();
-        // uint256 f = to.calculateCurrentFee();
-        // uint256 toMint = amount * k / (k - r - f);
-        // uint256 toPrice = to.price();
-        // uint256 toBalance = toMint * 10**(36 - collateral.decimals()) / toPrice;
-
-        // to.adjust(toMint, toBalance, toPrice);
         flash.repayLoan(amount);
 
-        emit Log("minted", from.minted());
+        uint256 zchfInRoller = zchf.balanceOf(address(this));
+        if (zchfInRoller > 0) zchf.transfer(msg.sender, zchfInRoller); // @dev: transfer all remaining zchf
+
+        // @trash: remove after testing
+        emit Log("minted from", from.minted());
+        emit Log("minted to", to.minted());
         emit Log("roller", zchf.balanceOf(address(this)));
+        
+        emit Log("coin from", collateral.balanceOf(_from));
+        emit Log("coin to", collateral.balanceOf(_to));
+        emit Log("roller coin", collateral.balanceOf(address(this)));
     }
 }
