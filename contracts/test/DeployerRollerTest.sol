@@ -10,6 +10,7 @@ import "../interface/IReserve.sol";
 
 import "../FlashLoanRoller/FlashLoanProvider.sol";
 import "../FlashLoanRoller/FlashLoanRoller.sol";
+import "../FlashLoanRoller/FlashLoanRollerFactory.sol";
 
 contract XCoin is ERC20 {
     constructor() ERC20(18) {
@@ -30,6 +31,7 @@ contract DeployerRollerTest {
     string public constant NAME = "DeployerRollerTestV0";
     Frankencoin public zchf;
     MintingHub public mintingHub;
+    FlashLoanRollerFactory public factory;
     FlashLoanProvider public flash;
     FlashLoanRoller public roller;
     ERC20 public coin;
@@ -69,8 +71,8 @@ contract DeployerRollerTest {
     }
 
     function initA_Minter() public {
-        // zchf.transferFrom(msg.sender, address(this), 3_000 ether); // 1_000 suggestMinter, 2_000 positions (2 pos)
-        zchf.transferFrom(msg.sender, address(this), 10_000 ether); // give more
+        // zchf.transferFrom(msg.sender, address(this), 10_000 ether); // give more, for testing
+        zchf.transferFrom(msg.sender, address(this), 3_000 ether); // 1_000 suggestMinter, 2_000 positions (2 pos)
         zchf.suggestMinter(address(flash), 1, 1000 ether, flash.NAME());
     }
 
@@ -81,14 +83,14 @@ contract DeployerRollerTest {
 
     function initC_Minting() public {
         posFrom.adjust(10000 ether, coin.balanceOf(address(posFrom)), posFrom.price()); // get own zchf, SC balance should be 10_000 ether
-        // posTo.adjust(10 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
+        posTo.adjust(10 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
     }
 
     function initD_Flashloan() public {
         posFrom.transferOwnership(address(roller));
         posTo.transferOwnership(address(roller));
 
-        zchf.approve(address(roller), 100 ether); // enough for fees 0.1% of 10k = 10 ether (so 10x)
+        // zchf.approve(address(roller), 100 ether); // enough for fees 0.1% of 10k = 10 ether (so 10x)
         roller.prepareAndExecute(address(posFrom), address(posTo));
     }
 }

@@ -49,7 +49,6 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
     }
 
     // ---------------------------------------------------------------------------------------------------
-    // @dev: needs allowance for flash fee transfer from msg.sender -> this (owned roller)
     function prepareAndExecute(address _from, address _to) external onlyOwner returns (bool) {
         Position from = Position(_from);
         Position to = Position(_to);
@@ -65,12 +64,8 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         uint256 toMint = minted - inReserve;
         uint256 flashFee = toMint * flash.FLASHLOAN_FEEPPM() / 1_000_000;
 
-        // TODO: make a collateral/price/ratios check --> revert CollateralInsufficient()
-
-        // claim flashFees from msg.sender (owner of roller)
-        zchf.transferFrom(msg.sender, address(this), flashFee); // needs allowance
-
-        flash.takeLoanAndExecute(_from, _to, toMint); // @dev: this will also invoke function "execute"
+        // @dev: this will also invoke function "execute"
+        flash.takeLoanAndExecute(_from, _to, toMint, flashFee); 
 
         // finalize, return ownership
         redeemOwnership(_from, msg.sender);
@@ -81,31 +76,9 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
     }
 
     // ---------------------------------------------------------------------------------------------------
-            /**
-        Lets define an approach.
-
-        Position A:
-        - minted 1000 zchf
-        - interest paid
-        - 10% in reserve
-        - rest paid out
-
-        Position B (needs to be open):
-        - should be able to have ajusted parameters
-        - the "only" same things are
-            - owner
-            - collateral
-        
-        Process:
-        - mint 1000 zchf
-        - pay back loan
-        - mint as much as needed
-          to receive 1000 zchf after costs and reserve
-        - consequece would be the collateral size
-        - how much collateral is needed fot the new position
-         */
-    function execute(address _from, address _to, uint256 amount) external {
-        if (msg.sender != address(flash)) revert NotFlashLoanProvider();
+    
+    function execute(address _from, address _to, uint256 amount, uint256 flashFee) external {
+        if (msg.sender != address(flash)) revert NotFlashLoanProvider(); // safe guard
 
         Position from = Position(_from);
         Position to = Position(_to);
@@ -136,43 +109,43 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         uint256 k = 1_000_000;
         uint256 r = to.reserveContribution();
         uint256 f = to.calculateCurrentFee();
-        uint256 roundingErrorCorrection = 1; // FIXME: Rounding Error, manually added "1" to pass flashloan repayment
-        uint256 toMint = amount * k / (k - r - f) + roundingErrorCorrection; // FIXME: Division causes rounding error (SafeMath?)
         
-        // @dev: gives the owner the ability to roll into an already minted position 
-        // (could be helpful to roll a smaller position into a bigger one)
-        uint256 toMinted = to.minted(); // @dev: will be 0, if its a "new" position
-        emit Log("Already minted in _to", toMinted);
+        // @dev: gives the owner the ability to roll into an already minted position.
+        // (could be helpful to roll a bigger position into a smaller one, or the other way around)
+        // FIXME: Rounding Error, manually added "1" to pass flashloan repayment
+        uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f) + 1; // FIXME: Division causes rounding error (SafeMath?)
+
+        // @trash: remove after testing
+        emit Log("Already minted in _to", to.minted());
+        emit Log("To mint amount for _to", toMint);
 
         // @dev: gives the owner the ability to transfer collateral into the roller contract, before flash loan,
-        // and adds it on top of the rolling process towards the "new" (to) position. Aka: adds additional funds.
-        // This is needed, because we give the owner the ability to have adjusted parameters including the loan duration for the "new" position.
+        // and adds it on top of the rolling/merging process towards the "new" (to) position. Aka: adds additional funds.
+        // This is needed, because we give the owner the ability to have **adjusted parameters** including the loan duration for the "new" position.
         // Also interest of the new mint needs to be covered by someone (aka. owner) in form of a higher collateral balance.
         // It depends, however, the "new" position provided will be already open, so there is already additional collateral
         // and should allow to cover the additional interest of the new mint.
         uint256 collBalThis = collateral.balanceOf(address(this));
         uint256 collBalTo = collateral.balanceOf(_to);
-        uint256 toBalance = collBalTo + collBalThis;
-        
-        // @trash: remove after testing
-        emit Log("To mint amount for _to", toMint);
-
         collateral.approve(_to, collBalThis);
-        to.adjust(toMint + toMinted, toBalance, to.price()); 
-
-        flash.repayLoan(amount);
-
-        uint256 zchfInRoller = zchf.balanceOf(address(this));
-        if (zchfInRoller > 0) zchf.transfer(msg.sender, zchfInRoller); // @dev: refunds remaining zchf in roller
+        to.adjust(toMint, collBalTo + collBalThis, to.price()); 
 
         // @trash: remove after testing
         emit Log("minted from", from.minted());
         emit Log("minted to", to.minted());
         emit Log("roller", zchf.balanceOf(address(this)));
-        
+
+        flash.repayLoan(amount);
+
         // @trash: remove after testing
-        // emit Log("coin from", collateral.balanceOf(_from));
-        // emit Log("coin to", collateral.balanceOf(_to));
-        // emit Log("roller coin", collateral.balanceOf(address(this)));
+        emit Log("minted from", from.minted()); // should be 0
+        emit Log("minted to", to.minted()); // should be "toMint"
+        emit Log("roller", zchf.balanceOf(address(this))); // should be 0
+
+        uint256 zchfInRoller = zchf.balanceOf(address(this));
+        if (zchfInRoller > 0) zchf.transfer(msg.sender, zchfInRoller); // @dev: refunds remaining zchf in roller
+
+        // @trash: remove after testing
+        emit Log("roller", zchf.balanceOf(address(this)));
     }
 }

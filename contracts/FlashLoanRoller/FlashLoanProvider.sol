@@ -2,8 +2,7 @@
 pragma solidity ^0.8.0;
 
 // @dev: Member "minters" not found or not visible after argument-dependent lookup in contract IFrankencoin.(9582)
-// switching to Frankencoin.sol contract
-import "../Frankencoin.sol"; 
+import "../interface/IFrankencoin.sol"; 
 import "../interface/IReserve.sol";
 import "./FlashLoanRollerFactory.sol";
 import "./IFlashLoanRollerExecute.sol";
@@ -11,7 +10,7 @@ import "./IFlashLoanRollerExecute.sol";
 contract FlashLoanProvider {
     // ---------------------------------------------------------------------------------------------------
     // immutable
-    Frankencoin public immutable zchf;
+    IFrankencoin public immutable zchf;
     FlashLoanRollerFactory public immutable factory;
 
     // ---------------------------------------------------------------------------------------------------
@@ -41,7 +40,7 @@ contract FlashLoanProvider {
     event NewRoller(address indexed roller, address owner); // indexed for roller
     event LoanTaken(address indexed to, uint256 amount, uint256 totalMint); // to: address(roller)
     event Repaid(address indexed from, uint256 total, uint256 repay, uint256 fee); // from: address(roller)
-    event Completed(address indexed from, uint256 amount); // from: address(roller)
+    event LoanCompleted(address indexed from, uint256 amount); // from: address(roller)
 
     // ---------------------------------------------------------------------------------------------------
     // Errors
@@ -56,7 +55,7 @@ contract FlashLoanProvider {
     // ---------------------------------------------------------------------------------------------------
     // Modifier
     modifier noCooldown() {
-       if (block.timestamp < cooldown) revert Cooldown(); // safe guard, for delayed start or shutdown
+        if (block.timestamp < cooldown) revert Cooldown(); // safe guard, for delayed start or shutdown
         _;
     }
 
@@ -72,7 +71,7 @@ contract FlashLoanProvider {
 
     // ---------------------------------------------------------------------------------------------------
     constructor(address _zchf) {
-        zchf = Frankencoin(_zchf);
+        zchf = IFrankencoin(_zchf);
         factory = new FlashLoanRollerFactory();
         cooldown = block.timestamp + FLASHLOAN_DELAY;
         totalMinted = 0;
@@ -106,7 +105,7 @@ contract FlashLoanProvider {
     }
 
     // ---------------------------------------------------------------------------------------------------
-    function takeLoanAndExecute(address _from, address _to, uint256 amount) external noCooldown proposalPassed onlyRegisteredRoller returns (bool) {
+    function takeLoanAndExecute(address _from, address _to, uint256 amount, uint256 flashFee) external noCooldown proposalPassed onlyRegisteredRoller returns (bool) {
         // @dev: guards could be adjusted to a quorum (%) of the totalSupply of zchf instead
         if (amount + totalMinted > FLASHLOAN_TOTALMAX) revert ExceedsTotalLimit(); 
         if (amount > FLASHLOAN_MAX) revert ExceedsLimit(); 
@@ -121,11 +120,11 @@ contract FlashLoanProvider {
         emit LoanTaken(msg.sender, amount, totalMinted);
 
         // execute
-        IFlashLoanRollerExecute(msg.sender).execute(_from, _to, amount);
+        IFlashLoanRollerExecute(msg.sender).execute(_from, _to, amount, flashFee);
 
         // verify after
         _verify(msg.sender);
-        emit Completed(msg.sender, amount);
+        emit LoanCompleted(msg.sender, amount);
         return true;
     }
 
@@ -138,7 +137,7 @@ contract FlashLoanProvider {
         uint256 total = amount + fee;
 
         zchf.burnFrom(msg.sender, amount);
-        zchf.transferFrom(msg.sender, address(zchf.reserve()), fee); 
+        zchf.collectProfits(msg.sender, fee); // @dev: would trigger event "Frankencoin:Profit"
 
         rollerRepaid[msg.sender] += amount;
         rollerFees[msg.sender] += fee;
