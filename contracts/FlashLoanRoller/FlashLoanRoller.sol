@@ -16,7 +16,7 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
 
     // ---------------------------------------------------------------------------------------------------
     // events
-    event Rolled(address owner, address from, address to, uint256 flashAmount, uint256 fee);
+    event Rolled(address owner, address from, address to, uint256 flashAmount, uint256 flashFee);
 
     // @trash: remove after testing
     event Log(string msg, uint256 num);
@@ -61,17 +61,17 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         if (minted == 0) revert PositionInsuffMint();
 
         uint256 inReserve = minted * from.reserveContribution() / 1_000_000;
-        uint256 toMint = minted - inReserve;
-        uint256 flashFee = toMint * flash.FLASHLOAN_FEEPPM() / 1_000_000;
+        uint256 flashAmount = minted - inReserve;
+        uint256 flashFee = flashAmount * flash.FLASHLOAN_FEEPPM() / 1_000_000;
 
         // @dev: this will also invoke function "execute"
-        flash.takeLoanAndExecute(_from, _to, toMint, flashFee); 
+        flash.takeLoanAndExecute(_from, _to, flashAmount, flashFee); 
 
         // finalize, return ownership
         redeemOwnership(_from, msg.sender);
         redeemOwnership(_to, msg.sender);
 
-        emit Rolled(msg.sender, _from, _to, toMint, flashFee);
+        emit Rolled(msg.sender, _from, _to, flashAmount, flashFee);
         return true;
     }
 
