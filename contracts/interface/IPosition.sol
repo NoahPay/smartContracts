@@ -6,7 +6,7 @@ import "./IReserve.sol";
 import "./IFrankencoin.sol";
 
 interface IPosition {
-
+    
     function original() external view returns (address);
 
     function collateral() external view returns (IERC20);
@@ -25,6 +25,8 @@ interface IPosition {
 
     function deny(address[] calldata helpers, string calldata message) external;
 
+    function adjust(uint256 newMinted, uint256 newCollateral, uint256 newPrice) external;
+    
     function mint(address target, uint256 amount) external;
 
     function minted() external view returns (uint256);

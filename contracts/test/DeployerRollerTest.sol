@@ -52,12 +52,12 @@ contract DeployerRollerTest {
         coin = new XCoin();
     }
 
-    function addPosition() public returns (address) {
-        coin.approve(address(mintingHub), 100 ether);
+    function addPosition(uint256 size) public returns (address) {
+        coin.approve(address(mintingHub), 10 ether);
         address pos = mintingHub.openPosition(
             address(coin),
-            10 ether,
-            100 ether,
+            1 ether,
+            size,
             1_000_000 ether,
             1, // needs adjustment in Position.sol (_initPeriod) for testing
             1000000,
@@ -77,13 +77,13 @@ contract DeployerRollerTest {
     }
 
     function initB_Positions() public {
-        posFrom = Position(addPosition());
-        posTo = Position(addPosition());
+        posFrom = Position(addPosition(10 ether));
+        posTo = Position(addPosition(1 ether));
     }
 
     function initC_Minting() public {
-        posFrom.adjust(10000 ether, coin.balanceOf(address(posFrom)), posFrom.price()); // get own zchf, SC balance should be 10_000 ether
-        posTo.adjust(10 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
+        posFrom.adjust(60000 ether, coin.balanceOf(address(posFrom)), posFrom.price()); // get own zchf, SC balance should be 10_000 ether
+        // posTo.adjust(0 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
     }
 
     function initD_Flashloan() public {
