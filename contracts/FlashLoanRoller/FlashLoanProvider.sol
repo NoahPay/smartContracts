@@ -37,11 +37,11 @@ contract FlashLoanProvider {
 
     // ---------------------------------------------------------------------------------------------------
     // Events
-    event NewRoller(address owner, address indexed roller); // indexed for roller
-    event Shutdown(address indexed denier, string message);
-    event LoanTaken(address indexed to, uint256 amount, uint256 totalMint);
-    event Repaid(address indexed from, uint256 total, uint256 repay, uint256 fee);
-    event Completed(address indexed from, uint256 amount);
+    event Shutdown(address indexed denier, string message); // denier: who initiates the shutdown
+    event NewRoller(address indexed roller, address owner); // indexed for roller
+    event LoanTaken(address indexed to, uint256 amount, uint256 totalMint); // to: address(roller)
+    event Repaid(address indexed from, uint256 total, uint256 repay, uint256 fee); // from: address(roller)
+    event Completed(address indexed from, uint256 amount); // from: address(roller)
 
     // ---------------------------------------------------------------------------------------------------
     // Errors
@@ -51,7 +51,6 @@ contract FlashLoanProvider {
     error ExceedsLimit();
     error ExceedsTotalLimit();
     error NotPaidBack();
-    error DelegateCallFailed();
     error PaidTooMuch();
 
     // ---------------------------------------------------------------------------------------------------
@@ -93,12 +92,13 @@ contract FlashLoanProvider {
         address roller = factory.createRoller(msg.sender, address(zchf), address(this));
         isRegisteredRoller[roller] = true;
         registeredRollers.push(roller);
-        emit NewRoller(msg.sender, roller);
+        emit NewRoller(roller, msg.sender);
         return roller;
     }
 
     // ---------------------------------------------------------------------------------------------------
-    function _verify(address sender) internal view noCooldown proposalPassed { // "middleware" alike. returns nothing. pass or revert
+    // @dev: "middleware" alike. returns nothing. pass or revert
+    function _verify(address sender) internal view noCooldown proposalPassed { 
         uint256 total = rollerMinted[sender] * (1_000_000 + FLASHLOAN_FEEPPM);
         uint256 repaid = rollerRepaid[sender] * 1_000_000;
         uint256 fee = rollerFees[sender] * 1_000_000;
@@ -106,7 +106,7 @@ contract FlashLoanProvider {
     }
 
     // ---------------------------------------------------------------------------------------------------
-    function takeLoan(address _from, address _to, uint256 amount) external noCooldown proposalPassed onlyRegisteredRoller returns (bool) {
+    function takeLoanAndExecute(address _from, address _to, uint256 amount) external noCooldown proposalPassed onlyRegisteredRoller returns (bool) {
         // @dev: guards could be adjusted to a quorum (%) of the totalSupply of zchf instead
         if (amount + totalMinted > FLASHLOAN_TOTALMAX) revert ExceedsTotalLimit(); 
         if (amount > FLASHLOAN_MAX) revert ExceedsLimit(); 
@@ -129,7 +129,7 @@ contract FlashLoanProvider {
         return true;
     }
 
-    // This function will be called my the roller contract within the "executeRolling" function
+    // This function will be called my the roller contract within the "execute" function
     // This function is callable multiple times to repay within a tx (atomic), in the end _verify needs to pass.
     // ---------------------------------------------------------------------------------------------------
     function repayLoan(uint256 amount) public noCooldown proposalPassed onlyRegisteredRoller returns (bool) {

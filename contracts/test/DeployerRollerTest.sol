@@ -81,6 +81,7 @@ contract DeployerRollerTest {
 
     function initC_Minting() public {
         posFrom.adjust(10000 ether, coin.balanceOf(address(posFrom)), posFrom.price()); // get own zchf, SC balance should be 10_000 ether
+        // posTo.adjust(10 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
     }
 
     function initD_Flashloan() public {
