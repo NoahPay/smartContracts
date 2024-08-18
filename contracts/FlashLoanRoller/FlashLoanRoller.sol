@@ -87,8 +87,20 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         // repay position
         from.adjust(0, 0, from.price());
 
-        // FIXME: Calculation is off, rounding error
-        // FIXME: minted must be adjusted so after cost output matches flash loan amount
+        uint256 k = 1_000_000;
+        uint256 r = to.reserveContribution();
+        uint256 f = to.calculateCurrentFee();
+        uint256 numerator = (amount + flashFee) * k;
+        uint256 denominator = k - (r + f);
+        
+        // @dev: gives the owner the ability to roll/merge into an already minted position.
+        // (could be helpful to roll a bigger position into a smaller one, or the other way around)
+        uint256 toMint = to.minted() + (numerator / denominator) + (numerator % denominator > 0 ? 1 : 0);
+        
+
+        // @dev: Division causes rounding error
+        // Rounding Error, manually added "1" to pass flashloan repayment
+        //uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f) + 1; 
 
         /** Hint!!!
         Error provided by the contract:
@@ -106,14 +118,6 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         }
         }
          */
-        uint256 k = 1_000_000;
-        uint256 r = to.reserveContribution();
-        uint256 f = to.calculateCurrentFee();
-        
-        // @dev: gives the owner the ability to roll into an already minted position.
-        // (could be helpful to roll a bigger position into a smaller one, or the other way around)
-        // FIXME: Rounding Error, manually added "1" to pass flashloan repayment
-        uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f) + 1; // FIXME: Division causes rounding error (SafeMath?)
 
         // @trash: remove after testing
         emit Log("Already minted in _to", to.minted());
@@ -123,8 +127,7 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         // and adds it on top of the rolling/merging process towards the "new" (to) position. Aka: adds additional funds.
         // This is needed, because we give the owner the ability to have **adjusted parameters** including the loan duration for the "new" position.
         // Also interest of the new mint needs to be covered by someone (aka. owner) in form of a higher collateral balance.
-        // It depends, however, the "new" position provided will be already open, so there is already additional collateral
-        // and should allow to cover the additional interest of the new mint.
+        // The "new" position provided will be already open, so there is already additional collateral and should allow to cover the additional interest.
         uint256 collBalThis = collateral.balanceOf(address(this));
         uint256 collBalTo = collateral.balanceOf(_to);
         collateral.approve(_to, collBalThis);
@@ -140,12 +143,13 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         // @trash: remove after testing
         emit Log("minted from", from.minted()); // should be 0
         emit Log("minted to", to.minted()); // should be "toMint"
-        emit Log("roller", zchf.balanceOf(address(this))); // should be 0
+        emit Log("zchf of roller after", zchf.balanceOf(address(this))); // should be 0
 
+        // @dev: refunds remaining zchf in roller
         uint256 zchfInRoller = zchf.balanceOf(address(this));
-        if (zchfInRoller > 0) zchf.transfer(msg.sender, zchfInRoller); // @dev: refunds remaining zchf in roller
+        if (zchfInRoller > 0) zchf.transfer(msg.sender, zchfInRoller); 
 
         // @trash: remove after testing
-        emit Log("roller", zchf.balanceOf(address(this)));
+        emit Log("zchf of roller finalized", zchf.balanceOf(address(this))); // for sure, its 0.
     }
 }

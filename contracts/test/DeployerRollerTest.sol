@@ -42,8 +42,8 @@ contract DeployerRollerTest {
 
     // constructor(address _zchf, address _mintingHub, address _flash, address _xcoin) {
     constructor() {
-        address _zchf = 0xDC1822bE1B75e14289a9a74aB0e03301137a3FcD;
-        address _mintingHub = 0x7aC3Ef99bD708A82F0c75405B101Ce17D421f0c8;
+        address _zchf = 0x20E6fDDC1172A1dc6A49a4d426C7C0f529D94933;
+        address _mintingHub = 0x7F9638863cE27518027eCB716343749742A5F80D;
 
         zchf = Frankencoin(_zchf);
         mintingHub = MintingHub(_mintingHub);
