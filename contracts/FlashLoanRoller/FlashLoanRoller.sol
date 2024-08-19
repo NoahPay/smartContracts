@@ -20,7 +20,6 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
 
     // @trash: remove after testing
     event Log(string msg, uint256 num);
-    event LogA(address addr, string msg);
     
     // ---------------------------------------------------------------------------------------------------
     // errors
@@ -28,7 +27,7 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
     error PositionInsuffMint();
     error NotFlashLoanProvider();
     error CollateralNotMatching();
-    error CollateralInsufficient();
+    // error CollateralInsufficient(); // let the "Position.sol" decide if collateral is sufficient
 
     // ---------------------------------------------------------------------------------------------------
     constructor (address _owner, address _zchf, address _flash) {
@@ -93,41 +92,27 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         uint256 numerator = (amount + flashFee) * k;
         uint256 denominator = k - (r + f);
         
-        // @dev: gives the owner the ability to roll/merge into an already minted position.
-        // (could be helpful to roll a bigger position into a smaller one, or the other way around)
-        uint256 toMint = to.minted() + (numerator / denominator) + (numerator % denominator > 0 ? 1 : 0);
-        
+        /**
+            @dev: Division causes rounding error
+            uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f); // original calculated 
+            
+            Hint!!!
+            Error provided by the contract: ERC20InsufficientBalance
+            "balance": "8999999999999999999"
+            "needed": "9000000000000000000"
+            
+            @dev: Rounding Error, manually added "1" to pass flashloan repayment
+            uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f);
 
-        // @dev: Division causes rounding error
-        // Rounding Error, manually added "1" to pass flashloan repayment
-        //uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f) + 1; 
-
-        /** Hint!!!
-        Error provided by the contract:
-        ERC20InsufficientBalance
-        Parameters:
-        {
-        "sender": {
-        "value": "0x6a76acaab56C1777De41a5A131E5F63ab4B73834"
-        },
-        "balance": {
-        "value": "8999999999999999999"
-        },
-        "needed": {
-        "value": "9000000000000000000"
-        }
-        }
+            @dev: A working work around: (numerator % denominator > 0 ? 1 : 0)
          */
 
-        // @trash: remove after testing
-        emit Log("Already minted in _to", to.minted());
-        emit Log("To mint amount for _to", toMint);
+        // @dev: gives the owner the ability to roll/merge into an already minted position.
+        uint256 toMint = to.minted() + (numerator / denominator) + (numerator % denominator > 0 ? 1 : 0);
 
-        // @dev: gives the owner the ability to transfer collateral into the roller contract, before flash loan,
-        // and adds it on top of the rolling/merging process towards the "new" (to) position. Aka: adds additional funds.
-        // This is needed, because we give the owner the ability to have **adjusted parameters** including the loan duration for the "new" position.
-        // Also interest of the new mint needs to be covered by someone (aka. owner) in form of a higher collateral balance.
-        // The "new" position provided will be already open, so there is already additional collateral and should allow to cover the additional interest.
+        // @dev: Allows the owner to transfer additional collateral into the roller contract before the flash loan.
+        // This collateral is added to the "new" (to) position during the rolling/merging process, enabling adjustments to parameters like loan duration.
+        // The additional collateral helps cover the interest of the new mint, ensuring the "new" position is sufficiently backed.
         uint256 collBalThis = collateral.balanceOf(address(this));
         uint256 collBalTo = collateral.balanceOf(_to);
         collateral.approve(_to, collBalThis);
@@ -151,5 +136,6 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
 
         // @trash: remove after testing
         emit Log("zchf of roller finalized", zchf.balanceOf(address(this))); // for sure, its 0.
+        emit Log("coin of roller finalized", collateral.balanceOf(address(this))); // for sure, its 0.
     }
 }

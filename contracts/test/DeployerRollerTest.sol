@@ -53,7 +53,7 @@ contract DeployerRollerTest {
     }
 
     function addPosition(uint256 size) public returns (address) {
-        coin.approve(address(mintingHub), 10 ether);
+        coin.approve(address(mintingHub), size);
         address pos = mintingHub.openPosition(
             address(coin),
             1 ether,
@@ -77,20 +77,19 @@ contract DeployerRollerTest {
     }
 
     function initB_Positions() public {
-        posFrom = Position(addPosition(10 ether));
+        posFrom = Position(addPosition(100 ether));
         posTo = Position(addPosition(1 ether));
     }
 
     function initC_Minting() public {
-        posFrom.adjust(60000 ether, coin.balanceOf(address(posFrom)), posFrom.price()); // get own zchf, SC balance should be 10_000 ether
-        // posTo.adjust(0 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
+        posFrom.adjust(600000 ether, coin.balanceOf(address(posFrom)), posFrom.price()); // get own zchf, SC balance should be 10_000 ether
+        posTo.adjust(1000 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
     }
 
     function initD_Flashloan() public {
         posFrom.transferOwnership(address(roller));
         posTo.transferOwnership(address(roller));
 
-        // zchf.approve(address(roller), 100 ether); // enough for fees 0.1% of 10k = 10 ether (so 10x)
         roller.prepareAndExecute(address(posFrom), address(posTo));
     }
 }
