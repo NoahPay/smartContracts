@@ -47,8 +47,12 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         token.transfer(to, token.balanceOf(address(this)));
     }
 
-    // ---------------------------------------------------------------------------------------------------
     function prepareAndExecute(address _from, address _to) external onlyOwner returns (bool) {
+        return prepareAndExecuteWithOwnership(_from, _to, true, true);
+    }
+
+    // ---------------------------------------------------------------------------------------------------
+    function prepareAndExecuteWithOwnership(address _from, address _to, bool redeemOwnershipFrom, bool redeemOwnershipTo) public onlyOwner returns (bool) {
         Position from = Position(_from);
         Position to = Position(_to);
 
@@ -66,9 +70,9 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         // @dev: this will also invoke function "execute"
         flash.takeLoanAndExecute(_from, _to, flashAmount, flashFee); 
 
-        // finalize, return ownership
-        redeemOwnership(_from, msg.sender);
-        redeemOwnership(_to, msg.sender);
+        // finalize, check redeemable ownerships
+        if (redeemOwnershipFrom) redeemOwnership(_from, msg.sender);
+        if (redeemOwnershipTo) redeemOwnership(_to, msg.sender);
 
         emit Rolled(msg.sender, _from, _to, flashAmount, flashFee);
         return true;
@@ -89,12 +93,10 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         uint256 k = 1_000_000;
         uint256 r = to.reserveContribution();
         uint256 f = to.calculateCurrentFee();
-        uint256 numerator = (amount + flashFee) * k;
-        uint256 denominator = k - (r + f);
         
         /**
-            @dev: Division causes rounding error
-            uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f); // original calculated 
+            @dev: Division causes rounding error in original calculation 
+            uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f); 
             
             Hint!!!
             Error provided by the contract: ERC20InsufficientBalance
@@ -102,17 +104,19 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
             "needed": "9000000000000000000"
             
             @dev: Rounding Error, manually added "1" to pass flashloan repayment
-            uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f);
+            uint256 toMint = to.minted() + (amount + flashFee) * k / (k - r - f) + 1; // manually added "1"
 
             @dev: A working work around: (numerator % denominator > 0 ? 1 : 0)
          */
+        uint256 numerator = (amount + flashFee) * k;
+        uint256 denominator = k - (r + f);
 
         // @dev: gives the owner the ability to roll/merge into an already minted position.
         uint256 toMint = to.minted() + (numerator / denominator) + (numerator % denominator > 0 ? 1 : 0);
 
         // @dev: Allows the owner to transfer additional collateral into the roller contract before the flash loan.
         // This collateral is added to the "new" (to) position during the rolling/merging process, enabling adjustments to parameters like loan duration.
-        // The additional collateral helps cover the interest of the new mint, ensuring the "new" position is sufficiently backed.
+        // The additional collateral helps cover the interest of the new mint, ensuring that two fully minted positions are sufficiently backed.
         uint256 collBalThis = collateral.balanceOf(address(this));
         uint256 collBalTo = collateral.balanceOf(_to);
         collateral.approve(_to, collBalThis);
