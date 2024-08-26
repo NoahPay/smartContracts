@@ -16,31 +16,25 @@ contract FlashLoanProvider {
     // ---------------------------------------------------------------------------------------------------
     // constant
     string public constant NAME = "FlashLoanV0";
-    uint256 public constant FLASHLOAN_TOTALMAX = 10_000_000 ether;
-    uint256 public constant FLASHLOAN_MAX = 1_000_000 ether;
-    uint256 public constant FLASHLOAN_FEEPPM = 1_000;
-    uint256 public constant FLASHLOAN_DELAY = 0; // 0sec for testing
+    uint256 public constant MAX_QUORUM_PPM = 200_000; // e.g. 20%
+    uint256 public constant FEE_PPM = 1_000; // e.g. 0.1%
+    uint256 public constant STARTUP_DELAY = 0; // 0 sec for testing
 
     // ---------------------------------------------------------------------------------------------------
     // changeable
     address[] public registeredRollers;
-    uint256 public totalMinted;
+    uint256 public totalVolumeMinted;
     uint256 public cooldown;
 
     // ---------------------------------------------------------------------------------------------------
     // Mappings
     mapping(address roller => bool isRoller) public isRegisteredRoller;
-    mapping(address => uint256) public rollerMinted;
-    mapping(address => uint256) public rollerRepaid;
-    mapping(address => uint256) public rollerFees;
 
     // ---------------------------------------------------------------------------------------------------
     // Events
     event Shutdown(address indexed denier, string message); // denier: who initiates the shutdown
     event NewRoller(address indexed roller, address owner); // indexed for roller
-    event LoanTaken(address indexed to, uint256 amount, uint256 totalMint); // to: address(roller)
-    event Repaid(address indexed from, uint256 total, uint256 repay, uint256 fee); // from: address(roller)
-    event LoanCompleted(address indexed from, uint256 amount); // from: address(roller)
+    event LoanCompleted(address indexed roller, uint256 amount, uint256 fee, uint256 totalVolumeMinted); 
 
     // ---------------------------------------------------------------------------------------------------
     // Errors
@@ -48,9 +42,6 @@ contract FlashLoanProvider {
     error ProposalNotPassed();
     error NotRegistered();
     error ExceedsLimit();
-    error ExceedsTotalLimit();
-    error NotPaidBack();
-    error PaidTooMuch();
 
     // ---------------------------------------------------------------------------------------------------
     // Modifier
@@ -73,8 +64,8 @@ contract FlashLoanProvider {
     constructor(address _zchf) {
         zchf = IFrankencoin(_zchf);
         factory = new FlashLoanRollerFactory();
-        cooldown = block.timestamp + FLASHLOAN_DELAY;
-        totalMinted = 0;
+        cooldown = block.timestamp + STARTUP_DELAY;
+        totalVolumeMinted = 0;
     }
 
     // ---------------------------------------------------------------------------------------------------
@@ -96,53 +87,30 @@ contract FlashLoanProvider {
     }
 
     // ---------------------------------------------------------------------------------------------------
-    // @dev: "middleware" alike. returns nothing. pass or revert
-    function _verify(address sender) internal view noCooldown proposalPassed { 
-        uint256 total = rollerMinted[sender] * (1_000_000 + FLASHLOAN_FEEPPM);
-        uint256 repaid = rollerRepaid[sender] * 1_000_000;
-        uint256 fee = rollerFees[sender] * 1_000_000;
-        if (repaid + fee < total) revert NotPaidBack();
-    }
-
-    // ---------------------------------------------------------------------------------------------------
     function takeLoanAndExecute(address _from, address _to, uint256 amount, uint256 flashFee) external noCooldown proposalPassed onlyRegisteredRoller returns (bool) {
         // @dev: guards could be adjusted to a quorum (%) of the totalSupply of zchf instead
-        if (amount + totalMinted > FLASHLOAN_TOTALMAX) revert ExceedsTotalLimit(); 
-        if (amount > FLASHLOAN_MAX) revert ExceedsLimit(); 
-
-        // verify before
-        _verify(msg.sender);
+        // if (amount > FLASHLOAN_MAX) revert ExceedsLimit(); 
+        if (amount * 1_000_000 > zchf.totalSupply() * MAX_QUORUM_PPM) revert ExceedsLimit();
+        
+        // tracks the total volume
+        totalVolumeMinted += amount;
 
         // mint flash loan
-        totalMinted += amount;
-        rollerMinted[msg.sender] += amount;
         zchf.mint(msg.sender, amount);
-        emit LoanTaken(msg.sender, amount, totalMinted);
 
         // execute
         IFlashLoanRollerExecute(msg.sender).execute(_from, _to, amount, flashFee);
 
-        // verify after
-        _verify(msg.sender);
-        emit LoanCompleted(msg.sender, amount);
-        return true;
-    }
-
-    // This function will be called my the roller contract within the "execute" function
-    // This function is callable multiple times to repay within a tx (atomic), in the end _verify needs to pass.
-    // ---------------------------------------------------------------------------------------------------
-    function repayLoan(uint256 amount) public noCooldown proposalPassed onlyRegisteredRoller returns (bool) {
-        if (rollerRepaid[msg.sender] + amount > rollerMinted[msg.sender]) revert PaidTooMuch();
-        uint256 fee = amount * FLASHLOAN_FEEPPM / 1_000_000;
-        uint256 total = amount + fee;
-
+        // repay and collect fee (with minters superpowers)
         zchf.burnFrom(msg.sender, amount);
-        zchf.collectProfits(msg.sender, fee); // @dev: would trigger event "Frankencoin:Profit"
+        zchf.collectProfits(msg.sender, FEE_PPM); // @dev: would trigger event "Frankencoin:Profit"
 
-        rollerRepaid[msg.sender] += amount;
-        rollerFees[msg.sender] += fee;
+        // @dev: refunds remaining zchf in roller (fail safe)
+        uint256 zchfInRoller = zchf.balanceOf(msg.sender);
+        if (zchfInRoller > 0) zchf.transferFrom(msg.sender, FlashLoanRoller(msg.sender).owner(), zchfInRoller); 
         
-        emit Repaid(msg.sender, total, amount, fee);
+        // emit all infos
+        emit LoanCompleted(msg.sender, amount, flashFee, totalVolumeMinted);
         return true;
     }
 }

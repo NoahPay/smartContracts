@@ -27,7 +27,6 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
     error PositionInsuffMint();
     error NotFlashLoanProvider();
     error CollateralNotMatching();
-    // error CollateralInsufficient(); // let the "Position.sol" decide if collateral is sufficient
 
     // ---------------------------------------------------------------------------------------------------
     constructor (address _owner, address _zchf, address _flash) {
@@ -65,7 +64,7 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
 
         uint256 inReserve = minted * from.reserveContribution() / 1_000_000;
         uint256 flashAmount = minted - inReserve;
-        uint256 flashFee = flashAmount * flash.FLASHLOAN_FEEPPM() / 1_000_000;
+        uint256 flashFee = flashAmount * flash.FEE_PPM() / 1_000_000;
 
         // @dev: this will also invoke function "execute"
         flash.takeLoanAndExecute(_from, _to, flashAmount, flashFee); 
@@ -121,25 +120,5 @@ contract FlashLoanRoller is IFlashLoanRollerExecute, Ownable {
         uint256 collBalTo = collateral.balanceOf(_to);
         collateral.approve(_to, collBalThis);
         to.adjust(toMint, collBalTo + collBalThis, to.price()); 
-
-        // @trash: remove after testing
-        emit Log("minted from", from.minted());
-        emit Log("minted to", to.minted());
-        emit Log("roller", zchf.balanceOf(address(this)));
-
-        flash.repayLoan(amount);
-
-        // @trash: remove after testing
-        emit Log("minted from", from.minted()); // should be 0
-        emit Log("minted to", to.minted()); // should be "toMint"
-        emit Log("zchf of roller after", zchf.balanceOf(address(this))); // should be 0
-
-        // @dev: refunds remaining zchf in roller
-        uint256 zchfInRoller = zchf.balanceOf(address(this));
-        if (zchfInRoller > 0) zchf.transfer(msg.sender, zchfInRoller); 
-
-        // @trash: remove after testing
-        emit Log("zchf of roller finalized", zchf.balanceOf(address(this))); // for sure, its 0.
-        emit Log("coin of roller finalized", collateral.balanceOf(address(this))); // for sure, its 0.
     }
 }

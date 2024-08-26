@@ -42,8 +42,8 @@ contract DeployerRollerTest {
 
     // constructor(address _zchf, address _mintingHub, address _flash, address _xcoin) {
     constructor() {
-        address _zchf = 0x20E6fDDC1172A1dc6A49a4d426C7C0f529D94933;
-        address _mintingHub = 0x7F9638863cE27518027eCB716343749742A5F80D;
+        address _zchf = 0xdACF32cdfA3E8deB39bCAcC1eea471539A98F5De;
+        address _mintingHub = 0x3FCf6D4a9E2EeaB4E603992FD5257CbeBD29C393;
 
         zchf = Frankencoin(_zchf);
         mintingHub = MintingHub(_mintingHub);
@@ -58,7 +58,7 @@ contract DeployerRollerTest {
             address(coin),
             1 ether,
             size,
-            1_000_000 ether,
+            2_000_000 ether,
             1, // needs adjustment in Position.sol (_initPeriod) for testing
             1000000,
             1000,
@@ -78,15 +78,17 @@ contract DeployerRollerTest {
 
     function initB_Positions() public {
         posFrom = Position(addPosition(100 ether));
-        posTo = Position(addPosition(1 ether));
+        posTo = Position(addPosition(100 ether));
     }
 
     function initC_Minting() public {
         posFrom.adjust(600000 ether, coin.balanceOf(address(posFrom)), posFrom.price()); // get own zchf, SC balance should be 10_000 ether
-        posTo.adjust(1000 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
+        posTo.adjust(600000 ether, coin.balanceOf(address(posTo)), posTo.price()); // testing merging from "from" into "to" position
     }
 
     function initD_Flashloan() public {
+        coin.transfer(address(roller), 2 ether);
+
         posFrom.transferOwnership(address(roller));
         posTo.transferOwnership(address(roller));
 
