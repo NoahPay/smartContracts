@@ -11,16 +11,16 @@ contract Unlock {
     Equity private immutable fps;
     FPSWrapper private immutable wfps;
 
-    constructor() {
-        zchf = Frankencoin(0xB58E61C3098d85632Df34EecfB899A1Ed80921cB);
-        fps = Equity(0x1bA26788dfDe592fec8bcB0Eaff472a42BE341B2);
-        wfps = FPSWrapper(0x5052D3Cc819f53116641e89b96Ff4cD1EE80B182);
+    constructor(address _zchf, address _fps, address _wfps) {
+        zchf = Frankencoin(_zchf);
+        fps = Equity(_fps);
+        wfps = FPSWrapper(_wfps);
     }
 
     function unlockAndRedeem(uint256 amount) public {
         fps.transferFrom(msg.sender, address(this), amount);
-
         fps.approve(address(wfps), amount);
+
         wfps.depositFor(address(this), amount);
         wfps.unwrapAndSell(amount);
 
