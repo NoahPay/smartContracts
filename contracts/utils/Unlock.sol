@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 interface IERC20 {
+    function balanceOf(address account) external returns (uint256);
     function approve(address spender, uint256 amount) external returns (bool);
     function transfer(address recipient, uint256 amount) external returns (bool);
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
@@ -27,6 +28,6 @@ contract Unlock {
         wfps.depositFor(address(this), amount);
         wfps.unwrapAndSell(amount);
 
-        zchf.transfer(msg.sender, amount);
+        zchf.transfer(msg.sender, zchf.balanceOf(address(this)));
     }
 }
