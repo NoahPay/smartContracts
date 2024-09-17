@@ -1,29 +1,32 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.0;
 
-import "./FPSWrapper.sol";
-import "../Frankencoin.sol";
-import "../Equity.sol";
+interface IERC20 {
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+}
+
+interface IWFPS {
+    function depositFor(address account, uint256 amount) external returns (bool);
+    function unwrapAndSell(uint256 amount) external;
+}
 
 contract Unlock {
-    Frankencoin private immutable zchf;
-    Equity private immutable fps;
-    FPSWrapper private immutable wfps;
+    IERC20 private immutable zchf = IERC20(0xB58E61C3098d85632Df34EecfB899A1Ed80921cB);
+    IERC20 private immutable fps = IERC20(0x1bA26788dfDe592fec8bcB0Eaff472a42BE341B2);
+    IWFPS private immutable wfps = IWFPS(0x5052D3Cc819f53116641e89b96Ff4cD1EE80B182);
 
-    constructor(address _zchf, address _fps, address _wfps) {
-        zchf = Frankencoin(_zchf);
-        fps = Equity(_fps);
-        wfps = FPSWrapper(_wfps);
+    function approveInfinity() external {
+        fps.approve(address(wfps), 1 << 255); // withlist the wrapper contract
     }
 
-    function unlockAndRedeem(uint256 amount) public {
+    function unlockAndRedeem(uint256 amount) external {
         fps.transferFrom(msg.sender, address(this), amount);
-        fps.approve(address(wfps), amount);
 
         wfps.depositFor(address(this), amount);
         wfps.unwrapAndSell(amount);
 
-        zchf.transfer(msg.sender, zchf.balanceOf(address(this)));
+        zchf.transfer(msg.sender, amount);
     }
 }
