@@ -7,7 +7,7 @@ import "./interface/IFrankencoin.sol";
 
 /**
  * @title Stable Coin Bridge
- * @notice A minting contract for another Swiss franc stablecoin ('source stablecoin') that we trust.
+ * @notice A minting contract for another Euro stablecoin ('source stablecoin') that we trust.
  * @author Frankencoin
  */
 contract StablecoinBridge {
